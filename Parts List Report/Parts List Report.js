@@ -76,7 +76,7 @@ function run(context) {
             var part_mass = parts[i].mass;
             var mass_unit = "kg";
             
-           if ( part_mass < .001 ) {
+           if ( part_mass < 1 ) {
                 part_mass = part_mass * 1000;
                 mass_unit = "g";
             }
