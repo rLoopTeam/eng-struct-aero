@@ -27,8 +27,6 @@ function run(context) {
 			return;
 		}
         
-        //test
-        
         var objIsCancelled = [];
         report_type = ui.inputBox("Select Report Type: 1: All Parts and Assemblies, 2: Top Parts and Assemblies, 3:Parts Only", objIsCancelled);
         // Exit the program if the dialog was cancelled.
