@@ -6,6 +6,8 @@
 var filename;
 var parts = new Array(0);
 var report_type;
+const CM_TO_IN = 0.393701;
+
 
 function run(context) {
     "use strict";
@@ -14,6 +16,7 @@ function run(context) {
 		debugger;
 		/*jslint debug: false*/
 	}
+    
     
 	
     try {
@@ -28,9 +31,9 @@ function run(context) {
 		}
         
         var objIsCancelled = [];
-        report_type = ui.inputBox("Select Report Type: 1: All Parts and Assemblies, 2: Top Parts and Assemblies, 3:Parts Only", objIsCancelled);
+        report_type = ui.inputBox("Select Report Type: 1: All Parts and Assemblies, 2: Top Parts and Assemblies, 3:Parts Only, 4: All Parts w/ COM", objIsCancelled);
         // Exit the program if the dialog was cancelled.
-            if (objIsCancelled.value || (report_type != 1 && report_type != 2 && report_type != 3)) {
+            if (objIsCancelled.value || (report_type != 1 && report_type != 2 && report_type != 3 && report_type != 4)) {
                 adsk.terminate();    
                 return;
             }
@@ -52,23 +55,31 @@ function run(context) {
         var dialogResult = fileDialog.showSave();
         
         if (dialogResult == adsk.core.DialogResults.DialogOK) {
-            filename = fileDialog.filename;
-            
+            filename = fileDialog.filename;    
         }
         
         var report_type_title = "All Parts and Assemblies";
         if ( report_type == 2 ) { report_type_title = "Top Parts and Assemblies"; }
         if ( report_type == 3 ) { report_type_title = "Parts Only"; }
+        if ( report_type == 4 ) { report_type_title = "Parts with Center of Mass"; }
 
         resultString = "<html><head><title>Part Report</title></head><body style='width:800px;'>";
-        resultString += "<img src='https://scontent-sea1-1.xx.fbcdn.net/hphotos-xat1/v/t1.0-9/12032134_1041698022515115_3902714344652686388_n.png?oh=ad166bf71afa3d2120577c6d354208c6&oe=5739E323' style='height:75px; float:right;'>";
+        resultString += "<div style='background-color:rgba(0, 176, 224, 0.6);'>";
+        resultString += "<img src='http://rloop.org/assets/images/logo-white.png' style='height:75px; float:right;'>";
         resultString += "<div><h1 style='margin:0px;'>Parts Report" + "</h1><h3 style='margin:0px;'>" + report_title + "</h3></div>";
         resultString += "<div style='clear:both; font-weight:bold; margin-bottom:15px; font-size:20px;'>" + report_type_title  + "</div>";
+         resultString += "</div>";
         resultString += "<table style='width:800px;'>";
         resultString += "<tr><td style='font-weight:bold; width:200px;'>Part Number</td>";
-        resultString += "<td style='font-weight:bold;'>Description</td>";
+        resultString += "<td style='font-weight:bold; width:250px;'>Description</td>";
         resultString += "<td style='font-weight:bold; width:100px;'>Mass</td>";
-        resultString += "<td style='font-weight:bold; width:50px;'>Qty.</td>";
+        if (report_type == 4 ) {
+            resultString += "<td style='font-weight:bold; width:100px;'>X (in)</td>";
+            resultString += "<td style='font-weight:bold; width:100px;'>Y (in)</td>";
+            resultString += "<td style='font-weight:bold; width:100px;'>Z (in)</td>";
+        } else {
+            resultString += "<td style='font-weight:bold; width:50px;'>Qty.</td>";
+        }
         
         parts.sort(compare)
         for (var i=0; i<parts.length; i++) {
@@ -85,7 +96,13 @@ function run(context) {
             resultString += "<td>" + parts[i].part_number + "</td>";
             resultString += "<td>" + parts[i].desc + "</td>";
             resultString += "<td>" + part_mass.toFixed(3) + " " + mass_unit + "</td>";
-            resultString += "<td>" + parts[i].qty + "</td>";
+            if (report_type == 4 ) {
+                resultString += "<td>" + Math.round(parts[i].com_x * 1000) / 1000 + "</td>";
+                resultString += "<td>" + Math.round(parts[i].com_y * 1000) / 1000 + "</td>";
+                resultString += "<td>" + Math.round(parts[i].com_z * 1000) / 1000 + "</td>";
+            } else {
+                resultString += "<td>" + parts[i].qty + "</td>";
+            }
             resultString += "</tr>";
         }
         resultString += "</table>";
@@ -93,6 +110,7 @@ function run(context) {
         resultString += "</body></html>";
         
         adsk.writeFile(filename, resultString); 
+        adsk.readFile(filename);
 
 	} catch (err) {
         if (ui) {
@@ -112,20 +130,24 @@ function traverseAssembly(occurrences, currentLevel, inputString) {
         //Check to see if part is already in the array
         var partFound = false;
         var indexVal;
-        for (var partlooper=0; partlooper<parts.length; partlooper++) {
-            if (parts[partlooper].part_number == occ.component.partNumber) { 
-                partFound = true; 
-                indexVal = partlooper;
-            } 
+        
+        if (report_type != 4 ){ // Don't do this for center of mass report
+            for (var partlooper=0; partlooper<parts.length; partlooper++) {
+                if (parts[partlooper].part_number == occ.component.partNumber) { 
+                    partFound = true; 
+                    indexVal = partlooper;
+                } 
+            }
         }
 
-        if (report_type == 1 || report_type == 2 || (report_type == 3 && occ.childOccurrences.count == 0) ) {
-        if ( partFound ) {
-            parts[indexVal].qty++;
-        } else {
-            var part = {part_number:occ.component.partNumber, desc:occ.component.description, qty:1, mass:occ.component.physicalProperties.mass}
-            parts.push(part);
-        }
+        if (report_type == 1 || report_type == 2 || ((report_type == 3 || report_type == 4) && occ.childOccurrences.count == 0) ) {
+            if ( partFound ) {
+                parts[indexVal].qty++;
+            } else {
+                // Center of Mass data is not in world coordinates
+                var part = {part_number:occ.component.partNumber, desc:occ.component.description, qty:1, mass:occ.physicalProperties.mass, com_x:occ.physicalProperties.centerOfMass.x * CM_TO_IN, com_y:occ.physicalProperties.centerOfMass.y * CM_TO_IN, com_z:occ.physicalProperties.centerOfMass.z * CM_TO_IN}
+                parts.push(part);
+            }
         }
         if (occ.childOccurrences && report_type !=2 ) {
             inputString = traverseAssembly(occ.childOccurrences, currentLevel + 1, inputString);
